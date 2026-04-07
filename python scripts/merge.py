@@ -75,39 +75,71 @@ river = river[["Data Acquisition Time", "District LGD Code", "District", "river_
 ground = ground[["Data Acquisition Time", "District LGD Code", "District", "groundwater_level"]]
 
 # =========================
-# 10. SORT EXACTLY FOR MERGE_ASOF
-# IMPORTANT: sort by time first, then by district code
+# 10. SORT
 # =========================
 rain = rain.sort_values(["Data Acquisition Time", "District LGD Code"]).reset_index(drop=True)
 river = river.sort_values(["Data Acquisition Time", "District LGD Code"]).reset_index(drop=True)
 ground = ground.sort_values(["Data Acquisition Time", "District LGD Code"]).reset_index(drop=True)
 
 # =========================
-# 11. MERGE RIVER INTO RAINFALL
+# 11. DAILY AGGREGATION
 # =========================
-merged = pd.merge_asof(
-    rain,
-    river[["Data Acquisition Time", "District LGD Code", "river_water_level"]],
-    on="Data Acquisition Time",
-    by="District LGD Code",
-    direction="nearest",
-    tolerance=pd.Timedelta("6h")
-)
+rain['Date'] = rain['Data Acquisition Time'].dt.date
+rain_daily = rain.groupby(['District LGD Code', 'Date']).agg({
+    'rainfall': 'sum',
+    'District': 'first'
+}).reset_index()
+
+river['Date'] = river['Data Acquisition Time'].dt.date
+river_daily = river.groupby(['District LGD Code', 'Date']).agg({
+    'river_water_level': 'mean'
+}).reset_index()
+
+ground['Date'] = ground['Data Acquisition Time'].dt.date
+ground_daily = ground.groupby(['District LGD Code', 'Date']).agg({
+    'groundwater_level': 'mean'
+}).reset_index()
 
 # =========================
-# 12. MERGE GROUNDWATER INTO RESULT
+# 12. MERGE DATASETS (FIXED)
 # =========================
-merged = pd.merge_asof(
+merged = pd.merge(
+    rain_daily,
+    river_daily,
+    on=['District LGD Code', 'Date'],
+    how='outer'
+)
+
+merged = pd.merge(
     merged,
-    ground[["Data Acquisition Time", "District LGD Code", "groundwater_level"]],
-    on="Data Acquisition Time",
-    by="District LGD Code",
-    direction="nearest",
-    tolerance=pd.Timedelta("7D")
+    ground_daily,
+    on=['District LGD Code', 'Date'],   # ✅ FIXED
+    how='outer'
 )
 
 # =========================
-# 13. FINAL CLEANUP
+# 13. RESTORE DATETIME
+# =========================
+merged['Data Acquisition Time'] = pd.to_datetime(merged['Date'])
+
+# =========================
+# 14. SORT BEFORE FILLING
+# =========================
+merged = merged.sort_values(['District LGD Code', 'Data Acquisition Time'])
+
+# =========================
+# 15. HANDLE MISSING VALUES (FIXED df → merged)
+# =========================
+merged['groundwater_level'] = merged.groupby('District LGD Code')['groundwater_level'].ffill().bfill()
+
+merged['rainfall'] = merged['rainfall'].fillna(0)
+
+merged['river_water_level'] = merged.groupby('District LGD Code')['river_water_level'].ffill().bfill()
+
+merged['District'] = merged['District'].ffill().bfill()
+
+# =========================
+# 16. FINAL CLEANUP
 # =========================
 merged = merged.drop_duplicates()
 
@@ -123,7 +155,7 @@ final_cols = [
 merged = merged[final_cols]
 
 # =========================
-# 14. SAVE OUTPUT
+# 17. SAVE OUTPUT
 # =========================
 merged.to_csv("merged_raw_dataset.csv", index=False)
 

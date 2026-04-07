@@ -5,7 +5,8 @@ from sklearn.preprocessing import MinMaxScaler
 # =========================
 # 1. LOAD DATA
 # =========================
-flood_df = pd.read_csv("flood_risk_dataset.csv")
+flood_df = pd.read_csv(r"flood_risk_dataset.csv")
+print(f"Original Data Shape: {flood_df.shape}")
 flood_df["Data Acquisition Time"] = pd.to_datetime(flood_df["Data Acquisition Time"], errors="coerce")
 
 # Sort properly
@@ -122,3 +123,5 @@ print(flood_df["flood_risk_category"].value_counts())
 
 print("\nMissing values:")
 print(flood_df.isnull().sum())
+
+print(flood_df)
